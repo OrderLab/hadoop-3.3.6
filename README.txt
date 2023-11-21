@@ -1,7 +1,11 @@
-For the latest information about Hadoop, please visit our website at:
+```
+./start-build-env.sh
 
-   http://hadoop.apache.org/
+# build mrbench
+cd hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-jobclient
+sudo mvn package -DskipTests -Dmaven.javadoc.skip=true
 
-and our wiki, at:
-
-   https://cwiki.apache.org/confluence/display/HADOOP/
+# build teragen/terasort
+cd hadoop-mapreduce-project/hadoop-mapreduce-examples
+sudo mvn package -DskipTests -Dmaven.javadoc.skip=true
+```
