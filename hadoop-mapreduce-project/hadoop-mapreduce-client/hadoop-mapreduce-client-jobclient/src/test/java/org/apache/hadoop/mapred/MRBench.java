@@ -34,6 +34,19 @@ import org.apache.hadoop.util.ToolRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Date;
+import java.text.SimpleDateFormat;
+
+//
+// import org.apache.hadoop.mapreduce.Job;
+// import org.apache.hadoop.mapreduce.JobID;
+// import org.apache.hadoop.mapreduce.TaskReport;
+// import org.apache.hadoop.mapreduce.TaskType;
+import org.apache.hadoop.mapred.JobClient;
+import org.apache.hadoop.mapred.JobID;
+import org.apache.hadoop.mapred.TaskReport;
+import org.apache.hadoop.mapred.RunningJob;
+import org.apache.hadoop.mapred.JobStatus;
 /**
  * Runs a job multiple times and takes average of all runs.
  */
@@ -47,9 +60,11 @@ public class MRBench extends Configured implements Tool{
     new Path(System.getProperty("test.build.data","/benchmarks/MRBench"));
   private static Path INPUT_DIR = new Path(BASE_DIR, DEFAULT_INPUT_SUB);
   private static Path OUTPUT_DIR = new Path(BASE_DIR, DEFAULT_OUTPUT_SUB);
-  
+  public static final String ANSI_BLUE = "\u001B[34m";
+  public static final String ANSI_RESET = "\u001B[0m";
   public enum Order {RANDOM, ASCENDING, DESCENDING};
-  
+  public JobID job_id;
+
   /**
    * Takes input format as text lines, runs some processing on it and 
    * writes out data as text again. 
@@ -173,10 +188,11 @@ public class MRBench extends Configured implements Tool{
    * Runs a MapReduce task, given number of times. The input to each run
    * is the same file.
    */
+  // Using mapred API
   private ArrayList<Long> runJobInSequence(JobConf masterJobConf, int numRuns) throws IOException {
     Random rand = new Random();
     ArrayList<Long> execTimes = new ArrayList<Long>(); 
-    
+    SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss,SSS");
     for (int i = 0; i < numRuns; i++) {
       // create a new job conf every time, reusing same object does not work 
       JobConf jobConf = new JobConf(masterJobConf);
@@ -192,12 +208,94 @@ public class MRBench extends Configured implements Tool{
       
       // run the mapred task now 
       long curTime = System.currentTimeMillis();
-      JobClient.runJob(jobConf);
+      System.out.println(ANSI_BLUE+"##RUIMING## MRBench begins at " + curTime + " / " + sdf.format(new Date(curTime))+ANSI_RESET);
+      // JobClient jobClient = new JobClient(new JobConf());
+      JobClient jobClient = new JobClient(new JobConf());
+      RunningJob currentJob = jobClient.submitJob(jobConf);
+      job_id = currentJob.getID();
+      System.out.println(ANSI_BLUE+"##RUIMING## job_id: " + job_id.toString() + ANSI_RESET);
+      while(currentJob.isComplete() == false){ }
+      long endTime = System.currentTimeMillis();
+      System.out.println(ANSI_BLUE+"##RUIMING## MRBench ends at " + endTime + " / " + sdf.format(new Date(endTime)) + ANSI_RESET);
+      System.out.println(ANSI_BLUE+"##RUIMING## MRBench duration (raw): " + sdf.format(new Date(curTime)) + " ~ " + sdf.format(new Date(endTime)) + ANSI_RESET);
+
+      TaskReport[] mapTaskReports = jobClient.getMapTaskReports(job_id);
+      TaskReport[] reduceTaskReports = jobClient.getReduceTaskReports(job_id);
+
+      // Process task reports as needed
+      for (TaskReport rpt : mapTaskReports) {
+          long duration = rpt.getFinishTime() - rpt.getStartTime();
+          System.out.println(ANSI_BLUE + "##RUIMING## TaskID:" + rpt.getTaskId() + "\tMapper duration: " + rpt.getFinishTime() + " - " +  rpt.getStartTime() + " = " + duration + " ms" + " ( From " + sdf.format(new Date(rpt.getStartTime())) + " to " + sdf.format(new Date(rpt.getFinishTime())) + " )" + "\tState: "+rpt.getState()+"\tProgress: "+rpt.getProgress() + ANSI_RESET);
+      }
+
+      for (TaskReport rpt : reduceTaskReports) {
+          long duration = rpt.getFinishTime() - rpt.getStartTime();
+          System.out.println(ANSI_BLUE + "##RUIMING## TaskID:" + rpt.getTaskId() + "\tReducer duration: " + rpt.getFinishTime() + " - " +  rpt.getStartTime() + " = " + duration + " ms" + " ( From " + sdf.format(new Date(rpt.getStartTime())) + " to " + sdf.format(new Date(rpt.getFinishTime())) + " )" + "\tState: "+rpt.getState()+"\tProgress: "+rpt.getProgress() + ANSI_RESET);
+      }
       execTimes.add(new Long(System.currentTimeMillis() - curTime));
     }
     return execTimes;
   }
-  
+
+  // Using mapreduce API
+  /*
+  private ArrayList<Long> runJobInSequence(JobConf masterJobConf, int numRuns) throws IOException {
+    Random rand = new Random();
+    ArrayList<Long> execTimes = new ArrayList<Long>(); 
+    
+    for (int i = 0; i < numRuns; i++) {
+      System.out.println("masterJobConf numMaps: " + masterJobConf.getNumMapTasks());
+      JobConf jobConf = new JobConf(masterJobConf);
+      jobConf.setJar(masterJobConf.getJar());
+      // Set the output path with a random name
+      FileOutputFormat.setOutputPath(jobConf, new Path(OUTPUT_DIR, "output_" + rand.nextInt()));
+      Job job = Job.getInstance(jobConf);
+      System.out.println("jobConf numMaps: " + jobConf.getNumMapTasks());
+      LOG.info("Running job " + i + ":" +
+               " input=" + FileInputFormat.getInputPaths(jobConf)[0] + 
+               " output=" + FileOutputFormat.getOutputPath(jobConf));
+      long curTime = System.currentTimeMillis();
+      try {
+          job.submit(); // Submit the job
+      } catch (ClassNotFoundException e) {
+          Thread.currentThread().interrupt(); // Restore the interrupted status
+      } catch (InterruptedException e) {
+          Thread.currentThread().interrupt(); // Restore the interrupted status
+      }
+      while (!job.isComplete()) {
+          try {
+              Thread.sleep(1000); // Sleep for a second
+          } catch (InterruptedException e) {
+              // Handle interruption (e.g., log or re-throw)
+              Thread.currentThread().interrupt(); // Restore the interrupted status
+          }
+      }
+      try {
+          TaskReport[] mapTaskReports = job.getTaskReports(TaskType.MAP);
+          TaskReport[] reduceTaskReports = job.getTaskReports(TaskType.REDUCE);
+
+          // Process task reports as needed
+          System.out.println("numMaps: " + mapTaskReports.length);
+          System.out.println("numReduces: " + reduceTaskReports.length);
+          for (TaskReport rpt : mapTaskReports) {
+            long duration = rpt.getFinishTime() - rpt.getStartTime();
+            System.out.println("TaskID:" + rpt.getTaskId() + "Mapper duration: " + rpt.getFinishTime() + " - " +  rpt.getStartTime() + " = " + duration + " ms");
+          }
+
+          for (TaskReport rpt : reduceTaskReports) {
+            long duration = rpt.getFinishTime() - rpt.getStartTime();
+            System.out.println("TaskID:" + rpt.getTaskId() + "Reducer duration: " + rpt.getFinishTime() + " - " +  rpt.getStartTime() + " = " + duration + " ms");
+          }
+      } catch (InterruptedException e) {
+          // Handle the InterruptedException (e.g., log or re-throw)
+          Thread.currentThread().interrupt(); // Restore the interrupted status
+      }
+      execTimes.add(new Long(System.currentTimeMillis() - curTime));
+    }
+    return execTimes;
+  }
+  */
+
   /**
    * <pre>
    * Usage: mrbench
@@ -213,6 +311,7 @@ public class MRBench extends Configured implements Tool{
    */
   public static void main (String[] args) throws Exception {
     int res = ToolRunner.run(new MRBench(), args);
+    System.out.println("END-OF-MRBench");
     System.exit(res);
   }
 
@@ -298,7 +397,6 @@ public class MRBench extends Configured implements Tool{
       fs.delete(OUTPUT_DIR, true);
       fs.delete(INPUT_DIR, true);
     }
-    
     if (verbose) {
       // Print out a report 
       System.out.println("Total MapReduce jobs executed: " + numRuns);
@@ -310,15 +408,17 @@ public class MRBench extends Configured implements Tool{
     long totalTime = 0; 
     for (Long time : execTimes) {
       totalTime += time.longValue(); 
-      if (verbose) {
-        System.out.println("Total milliseconds for task: " + (++i) + 
+      // if (verbose) {
+      System.out.println("Total milliseconds for task: " + (++i) + 
                            " = " +  time);
-      }
+      // }
     }
-    long avgTime = totalTime / numRuns;    
+    long avgTime = totalTime / numRuns; 
+    // long avgTime = 0;   
     System.out.println("DataLines\tMaps\tReduces\tAvgTime (milliseconds)");
     System.out.println(inputLines + "\t\t" + numMaps + "\t" + 
                        numReduces + "\t" + avgTime);
+    LOG.info("END-OF-MRBench");
     return 0;
   }
   

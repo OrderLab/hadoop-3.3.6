@@ -50,6 +50,11 @@ import org.apache.hadoop.util.ToolRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Date;
+import java.text.SimpleDateFormat;
+import org.apache.hadoop.mapreduce.TaskReport;
+import org.apache.hadoop.mapreduce.TaskType;
+
 /**
  * Generate the official GraySort input data set.
  * The user specifies the number of rows and the output directory and this
@@ -67,6 +72,8 @@ import org.slf4j.LoggerFactory;
  */
 public class TeraGen extends Configured implements Tool {
   private static final Logger LOG = LoggerFactory.getLogger(TeraGen.class);
+  public static final String ANSI_BLUE = "\u001B[34m";
+  public static final String ANSI_RESET = "\u001B[0m";
 
   public enum Counters {CHECKSUM}
 
@@ -286,6 +293,7 @@ public class TeraGen extends Configured implements Tool {
   public int run(String[] args) 
       throws IOException, InterruptedException, ClassNotFoundException {
     Job job = Job.getInstance(getConf());
+    SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss,SSS");
     if (args.length != 2) {
       usage();
       return 2;
@@ -301,7 +309,31 @@ public class TeraGen extends Configured implements Tool {
     job.setOutputValueClass(Text.class);
     job.setInputFormatClass(RangeInputFormat.class);
     job.setOutputFormatClass(TeraOutputFormat.class);
-    return job.waitForCompletion(true) ? 0 : 1;
+
+    long start = System.currentTimeMillis();
+    System.out.println(ANSI_BLUE+"##RUIMING## TeraGen begins at " + start + " / " + sdf.format(new Date(start))+ANSI_RESET);
+
+    int ret = job.waitForCompletion(true) ? 0 : 1;
+
+    long end = System.currentTimeMillis();
+    System.out.println(ANSI_BLUE+"##RUIMING## TeraGen ends at " + end + " / " + sdf.format(new Date(end))+ANSI_RESET);
+    System.out.println(ANSI_BLUE+"##RUIMING## TeraGen duration (raw): " + sdf.format(new Date(start)) + " ~ " + sdf.format(new Date(end)) + ANSI_RESET);
+
+    // JobID jobID = job.getJobID();
+    TaskReport[] taskReports = job.getTaskReports(TaskType.MAP);
+    for (TaskReport rpt : taskReports) {
+        long duration = rpt.getFinishTime() - rpt.getStartTime();
+        System.out.println(ANSI_BLUE + "##RUIMING## TaskID:" + rpt.getTaskId() + "\tMapper duration: " + rpt.getFinishTime() + " - " +  rpt.getStartTime() + " = " + duration + " ms" + " ( From " + sdf.format(new Date(rpt.getStartTime())) + " to " + sdf.format(new Date(rpt.getFinishTime())) + " )" + "\tState: "+rpt.getState()+"\tProgress: "+rpt.getProgress() + ANSI_RESET);
+
+    }
+
+    taskReports = job.getTaskReports(TaskType.REDUCE);
+    for (TaskReport rpt : taskReports) {
+        long duration = rpt.getFinishTime() - rpt.getStartTime();
+        System.out.println(ANSI_BLUE + "##RUIMING## TaskID:" + rpt.getTaskId() + "\tReducer duration: " + rpt.getFinishTime() + " - " +  rpt.getStartTime() + " = " + duration + " ms" + " ( From " + sdf.format(new Date(rpt.getStartTime())) + " to " + sdf.format(new Date(rpt.getFinishTime())) + " )" + "\tState: "+rpt.getState()+"\tProgress: "+rpt.getProgress() + ANSI_RESET);
+    }
+    LOG.info("done");
+    return ret;
   }
 
   public static void main(String[] args) throws Exception {

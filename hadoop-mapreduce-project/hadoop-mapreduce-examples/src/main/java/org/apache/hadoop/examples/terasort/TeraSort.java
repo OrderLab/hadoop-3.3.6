@@ -39,6 +39,12 @@ import org.apache.hadoop.util.ToolRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Date;
+import java.text.SimpleDateFormat;
+import org.apache.hadoop.mapreduce.TaskReport;
+import org.apache.hadoop.mapreduce.TaskType;
+
+
 /**
  * Generates the sampled split points, launches the job, and waits for it to
  * finish. 
@@ -48,6 +54,8 @@ import org.slf4j.LoggerFactory;
  */
 public class TeraSort extends Configured implements Tool {
   private static final Logger LOG = LoggerFactory.getLogger(TeraSort.class);
+  public static final String ANSI_BLUE = "\u001B[34m";
+  public static final String ANSI_RESET = "\u001B[0m";
 
   /**
    * A partitioner that splits text keys into roughly equal partitions
@@ -297,6 +305,7 @@ public class TeraSort extends Configured implements Tool {
       usage();
       return 2;
     }
+    SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss,SSS");
     LOG.info("starting");
     Job job = Job.getInstance(getConf());
     Path inputDir = new Path(args[0]);
@@ -331,7 +340,28 @@ public class TeraSort extends Configured implements Tool {
     }
     
     job.getConfiguration().setInt("dfs.replication", getOutputReplication(job));
+    long start = System.currentTimeMillis();
+    System.out.println(ANSI_BLUE+"##RUIMING## TeraSort begins at " + start + " / " + sdf.format(new Date(start))+ANSI_RESET);
+
     int ret = job.waitForCompletion(true) ? 0 : 1;
+
+    long end = System.currentTimeMillis();
+    System.out.println(ANSI_BLUE+"##RUIMING## TeraSort ends at " + end + " / " + sdf.format(new Date(end))+ANSI_RESET);
+    System.out.println(ANSI_BLUE+"##RUIMING## TeraSort duration (raw): " + sdf.format(new Date(start)) + " ~ " + sdf.format(new Date(end)) + ANSI_RESET);
+
+    // JobID jobID = job.getJobID();
+    TaskReport[] taskReports = job.getTaskReports(TaskType.MAP);
+    for (TaskReport rpt : taskReports) {
+        long duration = rpt.getFinishTime() - rpt.getStartTime();
+        System.out.println(ANSI_BLUE + "##RUIMING## TaskID:" + rpt.getTaskId() + "\tMapper duration: " + rpt.getFinishTime() + " - " +  rpt.getStartTime() + " = " + duration + " ms" + " ( From " + sdf.format(new Date(rpt.getStartTime())) + " to " + sdf.format(new Date(rpt.getFinishTime())) + " )" + "\tState: "+rpt.getState()+"\tProgress: "+rpt.getProgress() + ANSI_RESET);
+
+    }
+
+    taskReports = job.getTaskReports(TaskType.REDUCE);
+    for (TaskReport rpt : taskReports) {
+        long duration = rpt.getFinishTime() - rpt.getStartTime();
+        System.out.println(ANSI_BLUE + "##RUIMING## TaskID:" + rpt.getTaskId() + "\tReducer duration: " + rpt.getFinishTime() + " - " +  rpt.getStartTime() + " = " + duration + " ms" + " ( From " + sdf.format(new Date(rpt.getStartTime())) + " to " + sdf.format(new Date(rpt.getFinishTime())) + " )" + "\tState: "+rpt.getState()+"\tProgress: "+rpt.getProgress() + ANSI_RESET);
+    }
     LOG.info("done");
     return ret;
   }
