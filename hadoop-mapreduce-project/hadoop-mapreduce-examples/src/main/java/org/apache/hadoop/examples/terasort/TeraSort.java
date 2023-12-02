@@ -342,6 +342,9 @@ public class TeraSort extends Configured implements Tool {
     job.getConfiguration().setInt("dfs.replication", getOutputReplication(job));
     long start = System.currentTimeMillis();
     System.out.println(ANSI_BLUE+"##RUIMING## TeraSort begins at " + start + " / " + sdf.format(new Date(start))+ANSI_RESET);
+    boolean default_speculative_search = false;
+    System.out.println(ANSI_BLUE+"##RUIMING## job.getConfiguration().getBoolean(MRJobConfig.MAP_SPECULATIVE, false) " + job.getConfiguration().getBoolean(MRJobConfig.MAP_SPECULATIVE,default_speculative_search) +ANSI_RESET);
+    System.out.println(ANSI_BLUE+"##RUIMING## job.getConfiguration().getBoolean(MRJobConfig.MAP_SPECULATIVE, false) " + job.getConfiguration().getBoolean(MRJobConfig.REDUCE_SPECULATIVE,default_speculative_search) +ANSI_RESET);
 
     int ret = job.waitForCompletion(true) ? 0 : 1;
 
