@@ -201,7 +201,8 @@ public class MRBench extends Configured implements Tool{
       // give a new random name to output of the mapred tasks
       FileOutputFormat.setOutputPath(jobConf, 
                          new Path(OUTPUT_DIR, "output_" + rand.nextInt()));
-
+      System.out.println(ANSI_BLUE + "getMapSpeculativeExecution: " + jobConf.getMapSpeculativeExecution() + ANSI_RESET);
+      System.out.println(ANSI_BLUE + "getReduceSpeculativeExecution: " + jobConf.getReduceSpeculativeExecution() + ANSI_RESET);
       LOG.info("Running job " + i + ":" +
                " input=" + FileInputFormat.getInputPaths(jobConf)[0] + 
                " output=" + FileOutputFormat.getOutputPath(jobConf));
